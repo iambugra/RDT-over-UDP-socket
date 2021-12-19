@@ -1,7 +1,18 @@
 CC=gcc 
+DEPS = var.h
 
-server: server.c 
-	$(CC) -o server server.c
+%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $<
 
-client: client.c
-	$(CC) -o client client.c 	
+all: server.o client.o
+	make server
+	make client
+
+server: server.o 
+	$(CC) -o server server.o
+
+client: client.o
+	$(CC) -o client client.o 	
+
+clean:
+	rm -rf client server
