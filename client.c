@@ -7,10 +7,39 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 #include "var.h"
 
-int main(){
+#define NUM_SND_THREAD NUM_SEQ
+#define NUM_RCV_THREAD NUM_SEQ
+
+
+
+void *receiving_routine(void *args){
+
+
+
+    return NULL;
+}
+
+
+void *sending_routine(void *args){
+
+
+    return NULL;
+}
+
+
+int main(int argc, char *argv[]){
+
+    // if (argc == 1 || argc > 4){
+    //     perror("Port number is not entered or invalid number of arguments\n");
+    //     exit(EXIT_FAILURE);
+    // }
+
+    // PORT_CLIENT = atoi(argv[3]);
+    
     int sockfd;
     char buffer[LIMIT_PAYLOAD];
     struct sockaddr_in servaddr, cliaddr;
@@ -25,6 +54,7 @@ int main(){
     memset(&servaddr, 0, sizeof(servaddr));
     memset(&cliaddr, 0, sizeof(cliaddr));
 
+    // fill sockaddr_in structs for client and server
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(PORT_SERVER);
     servaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
@@ -33,10 +63,13 @@ int main(){
     cliaddr.sin_port = htons(PORT_CLIENT);
     cliaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
+    // bind client's address to socket
     if(bind(sockfd, (const struct sockaddr *)&cliaddr, sizeof(cliaddr)) < 0){
         perror("client side bind failed");
         exit(EXIT_FAILURE);
     }
+
+
 
     sendto(sockfd, (const char *)msg, strlen(msg), 0, (const struct sockaddr *) &servaddr, sizeof(servaddr));
 

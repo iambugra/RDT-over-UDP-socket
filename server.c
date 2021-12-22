@@ -10,7 +10,16 @@
 
 #include "var.h"
 
-int main(){
+
+int main(int argc, char *argv[]){
+
+    // if (argc == 1 || argc > 2){
+    //     perror("Port number is not entered or invalid number of arguments\n");
+    //     exit(EXIT_FAILURE);
+    // }
+
+    // PORT_SERVER = atoi(argv[argc-1]);
+
     int sockfd;
     char buffer[LIMIT_PAYLOAD];
     struct sockaddr_in servaddr, cliaddr;
