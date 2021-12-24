@@ -9,19 +9,93 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <chrono>
 
 #include "var.h"
+
+using namespace std;
+
+
+void* init_countdown_routine(void *params){
+
+    int sockfd = ((struct init_thd_params *)params)->sockfd;
+    char *msg = ((struct init_thd_params *)params)->msg;
+    struct sockaddr_in dest = ((struct init_thd_params *)params)->dest;
+    pthread_t parent_tid = ((struct init_thd_params *)params)->parent_tid;
+
+    auto t_start = chrono::high_resolution_clock::now();
+    auto timeout = chrono::high_resolution_clock::now();
+
+    while (1){
+        auto t_end = chrono::high_resolution_clock::now();
+        if (chrono::duration<double, milli>(t_end - t_start).count() > 1000){
+            cout << "1000ms is over send it again" << endl;
+            sendto(sockfd, (const char *) msg, strlen(msg), 0, (const struct sockaddr *) &dest, sizeof(dest));
+
+            t_start = chrono::high_resolution_clock::now();
+        }
+        if (chrono::duration<double, milli>(t_end - timeout).count() > 3000){
+            cout << "timeout for cli countdown rtn" << endl;
+            pthread_cancel(parent_tid);
+            return NULL;
+        }
+    }
+
+
+    return NULL;
+}
+
+
+void handshake(int sockfd, struct addrinfo *addrinfo, char *troll_port){
+
+    struct sockaddr_in *dest = (struct sockaddr_in *)addrinfo->ai_addr;
+    dest->sin_port = htons(atoi(troll_port));
+    // char buffer[15];
+    // void *ip_addr = &(((struct sockaddr_in *)addrinfo->ai_addr)->sin_addr);
+    // // inet_ntop(addrinfo->ai_family, ip_addr, buffer, sizeof(buffer));
+    // unsigned short dest_port = ntohs(dest->sin_port);
+    
+    // std::cout << dest_port << std::endl;
+
+    char *init_msg = "bonjour";
+
+    if (sendto(sockfd, (const char *) init_msg, strlen(init_msg), 0, (const struct sockaddr *) dest, sizeof(*dest)) == -1){
+        // sendto(sockfd, (const char *)hello, strlen(hello), 0, (const struct sockaddr *) &serv_addr, sizeof(serv_addr))
+        perror("client: initialize");
+        return;
+    }
+
+    struct init_thd_params params;
+    params.sockfd = sockfd;
+    params.dest = *dest;
+    params.parent_tid = pthread_self();
+
+    pthread_t ptid;
+    pthread_create(&ptid, NULL, &init_countdown_routine, &params);
+
+    char buffer[20];
+    socklen_t size_trolladdr;
+    int len_rcvd = recvfrom(sockfd, (char *) buffer, 20, MSG_WAITALL, (struct sockaddr *) dest, &size_trolladdr);
+
+    fprintf(stderr, "%s\n", buffer);
+
+    pthread_cancel(ptid);
+
+
+}
 
 
 
 int main(int argc, char *argv[]){
 
-    // if (argc == 1 || argc > 4){
-    //     perror("Port number is not entered or invalid number of arguments\n");
-    //     exit(EXIT_FAILURE);
-    // }
+    if (argc == 1 || argc > 4){
+        perror("Invalid number of arguments\n");
+        exit(EXIT_FAILURE);
+    }
 
-    // PORT_CLIENT = atoi(argv[3]);
+    char *interface_ip = argv[1];
+    char *PORT_TROLL = argv[2];
+    char *PORT_CLIENT = argv[3];
 
     int sockfd;
     struct addrinfo hints, *p, *clientinfo; 
@@ -32,7 +106,7 @@ int main(int argc, char *argv[]){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
 
-    if ((rv = getaddrinfo("127.0.0.1", PORT_CLIENT, &hints, &p))) { 
+    if ((rv = getaddrinfo(interface_ip, PORT_CLIENT, &hints, &p))) { 
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
     }
@@ -42,7 +116,6 @@ int main(int argc, char *argv[]){
             perror("client: socket"); 
             continue;
         }
-
         break;
     }
 
@@ -56,22 +129,7 @@ int main(int argc, char *argv[]){
         return 3;
     }
 
-    int len_received_msg, size_cliaddr;
-
-    serv_addr.sin_family    = AF_INET;
-    serv_addr.sin_addr.s_addr = INADDR_ANY;
-    serv_addr.sin_port = htons(3456);
-    
-    char *hello = "c: hi";
-    sendto(sockfd, (const char *)hello, strlen(hello), 0, (const struct sockaddr *) &serv_addr, sizeof(serv_addr));
-    printf("Hello message sent from client.\n");
-           
-    char buffer[LIMIT_PAYLOAD];
-    len_received_msg = recvfrom(sockfd, (char *)buffer, LIMIT_PAYLOAD, MSG_WAITALL, (struct sockaddr *) &serv_addr, (socklen_t *) &size_cliaddr);
-    buffer[len_received_msg] = '\0';
-    printf("Server : %s\n", buffer);
-
-    
+    handshake(sockfd, clientinfo, PORT_TROLL);
     
     
 

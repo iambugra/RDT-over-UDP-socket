@@ -1,4 +1,4 @@
-#include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -9,21 +9,39 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <chrono>
 
 #include "var.h"
+
+using namespace std;
+
+
+void handshake(int sockfd, struct addrinfo *troll_addrinfo){
+
+    char buffer[15];
+    socklen_t size_trolladdr;
+    int len_rcvd = recvfrom(sockfd, (char *)buffer, 15, MSG_WAITALL, (struct sockaddr *) troll_addrinfo, &size_trolladdr);
+
+    fprintf(stderr, "%s\n", buffer);
+
+    char *reply_back = "bonjour a vous aussi";
+
+    sendto(sockfd, (const char *) reply_back, strlen(reply_back), 0, (const struct sockaddr *) troll_addrinfo, sizeof(*troll_addrinfo));
+
+}
 
 
 int main(int argc, char *argv[]){
 
-    // if (argc == 1 || argc > 2){
-    //     perror("Port number is not entered or invalid number of arguments\n");
-    //     exit(EXIT_FAILURE);
-    // }
+    if (argc == 1 || argc > 2){
+        perror("Port number is not entered or invalid number of arguments\n");
+        exit(EXIT_FAILURE);
+    }
 
-    // PORT_SERVER = atoi(argv[argc-1]);
+    char *PORT_SERVER = argv[1];
 
     int sockfd;
-    struct addrinfo hints, *p, *servinfo; 
+    struct addrinfo hints, *p, *servinfo, troll_addrinfo; 
     int rv;
     struct sockaddr_in cli_addr;
 
@@ -31,7 +49,7 @@ int main(int argc, char *argv[]){
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
 
-    if ((rv = getaddrinfo("127.0.0.1", PORT_SERVER, &hints, &p))) { 
+    if ((rv = getaddrinfo(NULL, PORT_SERVER, &hints, &p))) { 
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
         return 1;
     }
@@ -55,16 +73,11 @@ int main(int argc, char *argv[]){
         return 3;
     }
 
-    int size_cliaddr = sizeof(cli_addr);
-    char buffer[LIMIT_PAYLOAD];
-    int len_received_msg = recvfrom(sockfd, (char *)buffer, LIMIT_PAYLOAD, MSG_WAITALL, (struct sockaddr *) &cli_addr, (socklen_t *) &size_cliaddr);
-    buffer[len_received_msg] = '\n';
-    printf("Client : %s\n", buffer);
+    handshake(sockfd, &troll_addrinfo);
 
-    char *hello = "hi_s";
-    sendto(sockfd, (const char *)hello, strlen(hello), MSG_CONFIRM, (const struct sockaddr *) &cli_addr, sizeof(cli_addr));
-    printf("Hello message sent.\n");
+    unsigned short PORT_TROLL = htons(((struct sockaddr_in *)(troll_addrinfo.ai_addr))->sin_port);
 
+    fprintf(stderr, "%hu\n", PORT_TROLL);
 
 
     return 0;
