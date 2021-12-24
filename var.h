@@ -5,7 +5,7 @@
 #define WINDOW_SIZE 4   
 #define NUM_SEQ (2*WINDOW_SIZE)
 
-int PORT_SERVER = 5050;
-int PORT_CLIENT = 4040;
+#define PORT_SERVER "3456"
+#define PORT_CLIENT "7890"
 
 #endif

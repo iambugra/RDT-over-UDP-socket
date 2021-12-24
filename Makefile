@@ -1,7 +1,7 @@
-CC=gcc 
+CC=g++ 
 DEPS = var.h
 
-%.o: %.c $(DEPS)
+%.o: %.cpp $(DEPS)
 	$(CC) -c -o $@ $<
 
 all: server.o client.o
