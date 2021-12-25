@@ -1,27 +1,14 @@
-#include <iostream>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <inttypes.h>
-#include <pthread.h>
-#include <netdb.h>
-#include <chrono>
-
-#include "var.h"
+#include "lib.h"
 
 using namespace std;
 
 
 void* init_countdown_routine(void *params){
 
-    int sockfd = ((struct init_thd_params *)params)->sockfd;
-    char *msg = ((struct init_thd_params *)params)->msg;
-    struct sockaddr_in dest = ((struct init_thd_params *)params)->dest;
-    pthread_t parent_tid = ((struct init_thd_params *)params)->parent_tid;
+    int sockfd = ((struct handshake_thd_params *)params)->sockfd;
+    char *msg = ((struct handshake_thd_params *)params)->msg;
+    struct sockaddr_in dest = ((struct handshake_thd_params *)params)->dest;
+    pthread_t parent_tid = ((struct handshake_thd_params *)params)->parent_tid;
 
     auto t_start = chrono::high_resolution_clock::now();
     auto timeout = chrono::high_resolution_clock::now();
@@ -65,7 +52,7 @@ void handshake(int sockfd, struct addrinfo *addrinfo, char *troll_port){
         return;
     }
 
-    struct init_thd_params params;
+    struct handshake_thd_params params;
     params.sockfd = sockfd;
     params.dest = *dest;
     params.parent_tid = pthread_self();
@@ -82,6 +69,19 @@ void handshake(int sockfd, struct addrinfo *addrinfo, char *troll_port){
     pthread_cancel(ptid);
 
 
+}
+
+
+void* tmp_routine(void* args){
+
+    cout << pthread_self() << " started." << endl;
+
+    string s;
+    cin >> s;
+
+    cout << pthread_self() << ": " << s << endl;
+
+    return NULL;
 }
 
 
@@ -131,7 +131,5 @@ int main(int argc, char *argv[]){
 
     handshake(sockfd, clientinfo, PORT_TROLL);
     
-    
-
     return 0;
 }

@@ -1,17 +1,4 @@
-#include <iostream>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <inttypes.h>
-#include <pthread.h>
-#include <netdb.h>
-#include <chrono>
-
-#include "var.h"
+#include "lib.h"
 
 using namespace std;
 
@@ -78,7 +65,6 @@ int main(int argc, char *argv[]){
     unsigned short PORT_TROLL = htons(((struct sockaddr_in *)(troll_addrinfo.ai_addr))->sin_port);
 
     fprintf(stderr, "%hu\n", PORT_TROLL);
-
 
     return 0;
 }
