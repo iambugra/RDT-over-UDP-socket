@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <netdb.h>
 #include <chrono>
+#include <vector>
 
 #define LIMIT_PAYLOAD 8
 #define WINDOW_SIZE 4   

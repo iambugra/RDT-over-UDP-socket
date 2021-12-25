@@ -3,12 +3,16 @@
 using namespace std;
 
 
-void* init_countdown_routine(void *params){
+vector<bool> countdown_required;
+vector<bool> resend;
 
-    int sockfd = ((struct handshake_thd_params *)params)->sockfd;
-    char *msg = ((struct handshake_thd_params *)params)->msg;
-    struct sockaddr_in dest = ((struct handshake_thd_params *)params)->dest;
-    pthread_t parent_tid = ((struct handshake_thd_params *)params)->parent_tid;
+
+void* init_countdown_routine(void *args){
+
+    int sockfd = ((struct handshake_thd_params *)args)->sockfd;
+    char *msg = ((struct handshake_thd_params *)args)->msg;
+    struct sockaddr_in dest = ((struct handshake_thd_params *)args)->dest;
+    pthread_t parent_tid = ((struct handshake_thd_params *)args)->parent_tid;
 
     auto t_start = chrono::high_resolution_clock::now();
     auto timeout = chrono::high_resolution_clock::now();
@@ -72,18 +76,22 @@ void handshake(int sockfd, struct addrinfo *addrinfo, char *troll_port){
 }
 
 
-void* tmp_routine(void* args){
+void* timer_routine(void *args){
 
-    cout << pthread_self() << " started." << endl;
+    int seq_num = *((int *)args);
 
-    string s;
-    cin >> s;
+    if (countdown_required[seq_num] == false) return NULL;      //mutex here
+    else {
+        // countdown baslat
+        while (1){
+            // if time is up, countdown_required[seq_num] = false, resend[seq_num] = true, return NULL.
+            // if countdown_required[seq_num] == false, (ack gelmis), return NULL.
+        }
+    }
 
-    cout << pthread_self() << ": " << s << endl;
 
     return NULL;
 }
-
 
 
 int main(int argc, char *argv[]){
