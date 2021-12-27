@@ -26,9 +26,9 @@ int main(int argc, char *argv[]){
     char *PORT_SERVER = argv[1];
 
     int sockfd;
-    struct addrinfo hints, *p, *servinfo, troll_addrinfo; 
+    struct addrinfo hints, *p, *servinfo; 
     int rv;
-    struct sockaddr_in cli_addr;
+    struct sockaddr_in cli_addr, troll_addrinfo;
 
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_INET;
@@ -58,12 +58,13 @@ int main(int argc, char *argv[]){
         return 3;
     }
 
-    handshake(sockfd, &troll_addrinfo);
+    
+    socklen_t size_trolladdr;
+    Packet pkt;
+    int len_rcvd = recvfrom(sockfd, &pkt, sizeof(Packet), 0, (struct sockaddr *) &troll_addrinfo, &size_trolladdr);
 
-    unsigned short PORT_TROLL = htons(((struct sockaddr_in *)(troll_addrinfo.ai_addr))->sin_port);
-    // unsigned short PORT_TROLL = 49921;
-
-    fprintf(stderr, "%hu\n", PORT_TROLL);
+    cout << pkt.payload << endl;
+    
 
     return 0;
 }

@@ -16,11 +16,14 @@
 #include <vector>
 #include <cmath>
 #include <semaphore.h>
-#include <fcntl.h>    
+#include <fcntl.h>
+#include <limits.h>
 
 #define LIMIT_PAYLOAD 8
 #define WINDOW_SIZE 4   
 #define NUM_SEQ (2*WINDOW_SIZE)
+#define BUFFER_SIZE 500
+#define PACKETS_ARRAY_SIZE 2048
 
 using namespace std;
 
@@ -36,11 +39,19 @@ struct handshake_thd_params {
 
 
 typedef struct {
-    unsigned short checksum;
+    int sockfd;
+    struct addrinfo *self;
+    char *port_troll;
+} sending_routine_params;
+
+
+typedef struct {
+    int checksum;
     bool isACK;
     int number;
     bool last_chunk;
-    string payload;
+    bool valid;
+    char payload[8];
 } Packet;
 
 
