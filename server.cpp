@@ -1,7 +1,5 @@
 #include "lib.h"
 
-using namespace std;
-
 
 void handshake(int sockfd, struct addrinfo *troll_addrinfo){
 
@@ -63,6 +61,7 @@ int main(int argc, char *argv[]){
     handshake(sockfd, &troll_addrinfo);
 
     unsigned short PORT_TROLL = htons(((struct sockaddr_in *)(troll_addrinfo.ai_addr))->sin_port);
+    // unsigned short PORT_TROLL = 49921;
 
     fprintf(stderr, "%hu\n", PORT_TROLL);
 

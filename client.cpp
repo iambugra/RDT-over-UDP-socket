@@ -1,10 +1,12 @@
 #include "lib.h"
 
-using namespace std;
-
 
 vector<bool> countdown_required;
 vector<bool> resend;
+int next_seq_num = 0;
+
+
+sem_t *mutex;
 
 
 void* init_countdown_routine(void *args){
@@ -28,10 +30,31 @@ void* init_countdown_routine(void *args){
         if (chrono::duration<double, milli>(t_end - timeout).count() > 3000){
             cout << "timeout for cli countdown rtn" << endl;
             pthread_cancel(parent_tid);
+            pthread_exit(NULL);
             return NULL;
         }
     }
 
+    cout << "countdown rtn exit" << endl;
+    return NULL;
+}
+
+
+void* init_helper_routine(void *args){
+    int sockfd = ((struct handshake_thd_params *)args)->sockfd;
+    struct sockaddr_in dest = ((struct handshake_thd_params *)args)->dest;
+    pthread_t parent_tid = ((struct handshake_thd_params *)args)->parent_tid;
+
+    cout << "init helper routine" << endl;
+
+    char buffer[20];
+    socklen_t size_trolladdr;
+    int len_rcvd = recvfrom(sockfd, (char *) buffer, 20, MSG_WAITALL, (struct sockaddr *) &dest, &size_trolladdr);
+
+    fprintf(stderr, "%s\n", buffer);
+
+    pthread_cancel(parent_tid);
+    pthread_exit(NULL);
 
     return NULL;
 }
@@ -56,37 +79,75 @@ void handshake(int sockfd, struct addrinfo *addrinfo, char *troll_port){
         return;
     }
 
-    struct handshake_thd_params params;
-    params.sockfd = sockfd;
-    params.dest = *dest;
-    params.parent_tid = pthread_self();
+    pthread_t helper_tid, cdown_tid;
 
-    pthread_t ptid;
-    pthread_create(&ptid, NULL, &init_countdown_routine, &params);
+    struct handshake_thd_params params1;
+    params1.sockfd = sockfd;
+    params1.dest = *dest;
+    params1.parent_tid = helper_tid;
 
-    char buffer[20];
-    socklen_t size_trolladdr;
-    int len_rcvd = recvfrom(sockfd, (char *) buffer, 20, MSG_WAITALL, (struct sockaddr *) dest, &size_trolladdr);
+    pthread_create(&cdown_tid, NULL, &init_countdown_routine, &params1);
 
-    fprintf(stderr, "%s\n", buffer);
+    struct handshake_thd_params params2;
+    params2.sockfd = sockfd;
+    params2.dest = *dest;
+    params2.parent_tid = cdown_tid;
 
-    pthread_cancel(ptid);
+    pthread_create(&helper_tid, NULL, &init_helper_routine, &params2);
+
+    
+    pthread_join(cdown_tid, NULL);
+    cout << "here" << endl;
+    pthread_join(helper_tid, NULL);
+    
 
 
 }
 
 
-void* timer_routine(void *args){
+vector<string> create_8B_chunks(string buffer){
 
-    int seq_num = *((int *)args);
+    vector<string> result;
 
-    if (countdown_required[seq_num] == false) return NULL;      //mutex here
-    else {
-        // countdown baslat
-        while (1){
-            // if time is up, countdown_required[seq_num] = false, resend[seq_num] = true, return NULL.
-            // if countdown_required[seq_num] == false, (ack gelmis), return NULL.
+    int len = buffer.size() - 1;            // get lenght of string, excluding new line character
+    int chunk_count = ceil(len/8.);         // how many 8B chunks
+
+    for (int i=0; i<chunk_count; i++){
+        string s = buffer.substr(i*8, 8);
+        result.push_back(s);
+    }
+
+    return result;
+}
+
+
+vector<string> read_stdin(){
+    int size = 500;
+    char buf[size];
+
+    memset(buf, 0, sizeof(char)*size);                   // clear the buf
+    size_t len = read(0, buf, 500);                      // read stdin into buf
+    buf[len] = '\0';
+
+    string buffer(buf);
+
+    return create_8B_chunks(buffer);
+}
+
+
+void* sending_routine(void *arg){
+
+    while (1){
+        
+        vector<string> pkts = read_stdin();
+        int size = pkts.size();
+
+        for (int i=0; i<size; i++){
+            ;
+
         }
+        
+
     }
 
 
@@ -110,7 +171,7 @@ int main(int argc, char *argv[]){
     int rv;
     struct sockaddr_in serv_addr;
 
-    memset(&hints, 0, sizeof hints);
+    memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
 
@@ -137,7 +198,15 @@ int main(int argc, char *argv[]){
         return 3;
     }
 
+    sem_unlink("client_sem_mutex");
+    mutex = sem_open("client_sem_mutex", O_CREAT, 0600, 1);
+
     handshake(sockfd, clientinfo, PORT_TROLL);
+
+    cout << "handshake done" << endl;
+
     
+    sem_close(mutex);
+
     return 0;
 }
