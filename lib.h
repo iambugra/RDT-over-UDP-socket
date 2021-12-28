@@ -56,6 +56,17 @@ typedef struct {
 
 
 
+int compute_cheksum(bool isACK, int number, bool last_chunk, bool valid, char *payload){
+    
+    int res = 0;
+
+    res += (isACK + number + last_chunk + valid);
+
+    for (int i=0; i<8; i++)
+        res += payload[i];
+
+    return res;
+}
 
 
 #endif
