@@ -12,7 +12,8 @@ int rcv_base = WINDOW_SIZE;                  // receiving
 void send_ack(int sockfd, int number, struct sockaddr_in *peer){
     
     string ack_msg = "ACK";
-    Packet ack = make_pkt(number, true, true, true, false, false, false, ack_msg);
+    TimePoint t = Clock::now();
+    Packet ack = make_pkt(number, true, true, true, false, false, false, t, ack_msg);
 
     if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) peer, sizeof(*peer)) == -1){
         perror("client: ack sending");
@@ -25,12 +26,13 @@ void send_ack(int sockfd, int number, struct sockaddr_in *peer){
 
 
 void init(){
+    TimePoint t = Clock::now();
 
     string dummy_msg1 = "kokaric";
     string dummy_msg2 = "kokorec";
     for (int i=0; i<WINDOW_SIZE; i++){
-        outgoing_packets[i] = make_pkt(0, false, false, false, false, false, false, dummy_msg1);
-        incoming_packets[i] = make_pkt(0, false, false, false, false, false, false, dummy_msg2);
+        outgoing_packets[i] = make_pkt(0, false, false, false, false, false, false, t, dummy_msg1);
+        incoming_packets[i] = make_pkt(0, false, false, false, false, false, false, t, dummy_msg2);
     }
 }
 
@@ -38,20 +40,20 @@ void init(){
 void* reading_routine(void *arg){
 
     while (1){
+        TimePoint t = Clock::now();
         
         vector<string> chunks = read_stdin();
         int size = chunks.size();
 
         for (int i=0; i<size; i++){
 
-            if (i == size-1) outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, true, true, false, false, false, chunks[i]);
-            else outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, false, false, chunks[i]);
+            if (i == size-1) outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, true, true, false, false, false, t, chunks[i]);
+            else outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, false, false, t, chunks[i]);
 
             next_seq_num++;
             next_seq_num %= PACKETS_ARRAY_SIZE;
         }
     }
-
 
     return NULL;
 }
@@ -77,15 +79,15 @@ void* sending_routine(void *arg){
                     perror("client: pkt sending");
                     return NULL;
                 }
-
+                outgoing_packets[i].timestamp = Clock::now();
                 outgoing_packets[i].sent = true;
             }
 
-            while (outgoing_packets[send_base].sent == true && outgoing_packets[send_base].ack_rcvd == true){        // packet is sent and received correctly, slide send_base to the right
-                send_base++;        // mutex maybe
-                send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
-            }
+        }
 
+        while (outgoing_packets[send_base].sent == true && outgoing_packets[send_base].ack_rcvd == true){        // packet is sent and received correctly, slide send_base to the right
+            send_base++;        // mutex maybe
+            send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
         }
 
     } 
@@ -125,6 +127,11 @@ void* receiving_routine(void *arg){
             return NULL;
         }
 
+        if (incoming_packets[received_pkt.number].received == true) {
+            cout << "duplicate: packet " << received_pkt.number << " already received. " << endl;
+            continue;
+        }
+
         int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.received, received_pkt.ack_rcvd, received_pkt.payload);
         if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
             cout << "checksum mismatch" << endl;
@@ -136,7 +143,6 @@ void* receiving_routine(void *arg){
             cout << " ack rcvd " << received_pkt.number << endl;
             
         } else {
-
             if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE) {
 
                 incoming_packets[received_pkt.number] = received_pkt;

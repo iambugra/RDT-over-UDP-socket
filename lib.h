@@ -19,12 +19,16 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <errno.h>
+#include <chrono>
 
 #define LIMIT_PAYLOAD 8
 #define WINDOW_SIZE 4
 #define NUM_SEQ (2*WINDOW_SIZE)
 #define BUFFER_SIZE 500
 #define PACKETS_ARRAY_SIZE 2048
+
+#define chrono::high_resolution_clock::time_point TimePoint
+#define chrono::high_resolution_clock Clock 
 
 using namespace std;
 
@@ -55,8 +59,11 @@ typedef struct {
     bool sent;
     bool received;
     bool ack_rcvd;
+    TimePoint timestamp; // = chrono::high_resolution_clock::now();
     char payload[8];
 } Packet;
+
+// chrono::high_resolution_clock::now(); assign this to timestamp   chrono::duration<double, milli>(t_end - t_start).count() gives time diff in milliseconds 
 
 
 
@@ -73,7 +80,7 @@ int compute_cheksum(bool isACK, int number, bool last_chunk, bool avail, bool se
 }
 
 
-Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool received, bool ack_rcvd, string msg){
+Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool received, bool ack_rcvd, TimePoint timestamp, string msg){
     Packet datagram;
 
     datagram.avail = avail;
@@ -81,6 +88,7 @@ Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool rec
     datagram.sent = sent;
     datagram.received = received;
     datagram.ack_rcvd = ack_rcvd;
+    datagram.timestamp = timestamp;
 
     // mutex possible
     datagram.number = number;
