@@ -18,9 +18,10 @@
 #include <semaphore.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <errno.h>
 
 #define LIMIT_PAYLOAD 8
-#define WINDOW_SIZE 4   
+#define WINDOW_SIZE 4
 #define NUM_SEQ (2*WINDOW_SIZE)
 #define BUFFER_SIZE 500
 #define PACKETS_ARRAY_SIZE 2048

@@ -135,6 +135,8 @@ void* sending_routine(void *arg){
     dest->sin_port = htons(atoi(port_troll));
 
     // cout << dest->sin_port << endl;
+
+    // cout << dest->sin_port << endl;
     
     while(1) {
         // mutex for send_base maybe
@@ -148,6 +150,8 @@ void* sending_routine(void *arg){
                     return NULL;
                 }
 
+                // cout << outgoing_packets[i].payload << endl;
+
                 sent[i] = true;
             }
 
@@ -160,6 +164,8 @@ void* sending_routine(void *arg){
                     perror("client: ack sending");
                     return NULL;
                 }
+
+                // cout << "here" << endl;
 
                 acked[i] = true;
 
@@ -212,13 +218,15 @@ void* receiving_routine(void *arg){
 
             if (received_pkt.isACK){                                        // packet is an ACK packet
                 acked[received_pkt.number] = true;
-                cout << "ackkkk" << endl;
+                // cout << "ackkkk" << endl;
 
             } else {                                                        // it is a data packet
                 // acked[received_pkt.number] = false;
                 received[received_pkt.number] = true;
 
                 incoming_packets[received_pkt.number] = received_pkt;
+
+                // cout << "seq#: " << received_pkt.number << ", received: " << received[received_pkt.number] << " acked: " << acked[received_pkt.number] << endl;
 
             }
         }

@@ -1,11 +1,12 @@
 #include "lib.h"
 
 
-int PORT_TROLL;
+int PORT_TROLL = 9319;
 
+struct sockaddr_storage peer_addr;
+socklen_t peer_addr_len;
 
-sem_t *mutex;
-
+sem_t *mutex, *synch;
 
 Packet outgoing_packets[PACKETS_ARRAY_SIZE];     // both reading and sending routine accesses
 Packet incoming_packets[PACKETS_ARRAY_SIZE];
@@ -127,28 +128,31 @@ void* reading_routine(void *arg){
 
 void* sending_routine(void *arg){
 
-    struct addrinfo *self = ((sending_routine_params *)arg)->self;
+    sem_wait(synch);
+
+    // struct addrinfo *self = ((sending_routine_params *)arg)->self;
     // char *port_troll = ((sending_routine_params *)arg)->port_troll;
     int sockfd = ((sending_routine_params *)arg)->sockfd;
 
-    struct sockaddr_in *dest = (struct sockaddr_in *)self->ai_addr;
-    dest->sin_port = ntohs(PORT_TROLL);
+    // struct sockaddr_in *dest = (struct sockaddr_in *)self->ai_addr;
+    // dest->sin_port = PORT_TROLL;
 
     // cout << dest->sin_port << endl;
     
     while(1) {
         // mutex for send_base maybe
-        for(int i=send_base; i<send_base+WINDOW_SIZE; i++){         // iterate within the window and send any packets that can be sent
+        for (int i=send_base; i<send_base+WINDOW_SIZE; i++){         // iterate within the window and send any packets that can be sent
             i %= PACKETS_ARRAY_SIZE;
 
             if (sent[i] == false && avail[i] == true) {     // if packet can be sent (in avail list) and not sent before, send it
                 
-                if (sendto(sockfd, &outgoing_packets[i], sizeof(outgoing_packets[i]), 0, (const struct sockaddr *) dest, sizeof(*dest)) == -1){
+                if (sendto(sockfd, &outgoing_packets[i], sizeof(outgoing_packets[i]), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
                     perror("server: pkt sending");
+                    cout << strerror(errno) << endl;
                     return NULL;
                 }
 
-                cout << outgoing_packets[i].payload << endl;
+                // cout << outgoing_packets[i].payload << endl;
 
                 sent[i] = true;
             }
@@ -158,7 +162,9 @@ void* sending_routine(void *arg){
                 string ack_msg = "ACK";
                 Packet ack = make_pkt(true, true, true, ack_msg);
 
-                if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) dest, sizeof(*dest)) == -1){
+                // cout << PORT_TROLL << endl;
+
+                if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
                     perror("server: ack sending");
                     return NULL;
                 }
@@ -191,20 +197,26 @@ void extract_data(int idx, bool last){
 void* receiving_routine(void *arg){
 
     int sockfd = *((int *) arg);
-    struct sockaddr_in troll_addrinfo;
-    socklen_t size_trolladdr;
+    // struct sockaddr_in troll_addrinfo;
+    // struct addrinfo *troll_addrinfo;
+    // socklen_t size_trolladdr;
     Packet received_pkt;
 
     while (1) {
-
-        int len_rcvd = recvfrom(sockfd, &received_pkt, sizeof(Packet), 0, (struct sockaddr *) &troll_addrinfo, &size_trolladdr);
+        peer_addr_len = sizeof(peer_addr);
+        int len_rcvd = recvfrom(sockfd, &received_pkt, sizeof(Packet), 0, (struct sockaddr *) &peer_addr, &peer_addr_len);
         if (len_rcvd == -1){
             perror("client: pkt rcving");
             return NULL;
         }
 
-        PORT_TROLL = troll_addrinfo.sin_port;
+        
+        // struct sockaddr_in *src = (struct sockaddr_in *)troll_addrinfo->ai_addr;
+        
+        // PORT_TROLL = htons(troll_addrinfo.sin_port);
         // cout << PORT_TROLL << endl;
+
+        sem_post(synch);
 
         if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE){
 
@@ -217,7 +229,7 @@ void* receiving_routine(void *arg){
 
             if (received_pkt.isACK){                                        // packet is an ACK packet
                 acked[received_pkt.number] = true;
-                cout << "ackkkk" << endl;
+                // cout << "ackkkk" << endl;
 
             } else {                                                        // it is a data packet
                 // acked[received_pkt.number] = false;
@@ -283,7 +295,10 @@ int main(int argc, char *argv[]){
     }
 
     sem_unlink("server_sem_mutex");
+    sem_unlink("server_sem_synch");
+
     mutex = sem_open("server_sem_mutex", O_CREAT, 0600, 1);
+    synch = sem_open("server_sem_synch", O_CREAT, 0600, 0);
 
     pthread_t reading_tid, sending_tid, receiving_tid;
 
@@ -305,5 +320,6 @@ int main(int argc, char *argv[]){
     
 
     sem_close(mutex);
+    sem_close(synch);
     return 0;
 }
