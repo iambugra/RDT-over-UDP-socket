@@ -1,23 +1,20 @@
 #include "lib.h"
 
 
-Packet packets_sent[PACKETS_ARRAY_SIZE];     // both reading and sending routine accesses
-Packet packets_rcvd[PACKETS_ARRAY_SIZE];     // receiving
+Packet outgoing_packets[PACKETS_ARRAY_SIZE];     // both reading and sending routine accesses
+Packet incoming_packets[PACKETS_ARRAY_SIZE];     // receiving
 
 int next_seq_num = WINDOW_SIZE;              // reading
 int send_base = WINDOW_SIZE;                 // sending
 int rcv_base = WINDOW_SIZE;                  // receiving
 
-// bool sent[PACKETS_ARRAY_SIZE];          // both reading and sending routine accesses
 bool ack_rcvd[PACKETS_ARRAY_SIZE];      // sending and receiving
-bool received[PACKETS_ARRAY_SIZE];      // sending and receiving
-
 
 
 void send_ack(int sockfd, int number, struct sockaddr_in *peer){
     
     string ack_msg = "ACK";
-    Packet ack = make_pkt(number, true, true, true, false, ack_msg);
+    Packet ack = make_pkt(number, true, true, true, false, false, ack_msg);
 
     if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) peer, sizeof(*peer)) == -1){
         perror("client: ack sending");
@@ -34,15 +31,15 @@ void init(){
     for (int i=0; i<PACKETS_ARRAY_SIZE; i++){
         // avail[i] = false;
         ack_rcvd[i] = false;
-        received[i] = false;
+        // received[i] = false;
         // sent[i] = false;
     }
 
     string dummy_msg1 = "kokaric";
     string dummy_msg2 = "kokorec";
     for (int i=0; i<WINDOW_SIZE; i++){
-        packets_sent[i] = make_pkt(0, false, false, false, false, dummy_msg1);
-        packets_rcvd[i] = make_pkt(0, false, false, false, false, dummy_msg2);
+        outgoing_packets[i] = make_pkt(0, false, false, false, false, false, dummy_msg1);
+        incoming_packets[i] = make_pkt(0, false, false, false, false, false, dummy_msg2);
     }
 }
 
@@ -86,8 +83,8 @@ void* reading_routine(void *arg){
 
         for (int i=0; i<size; i++){
 
-            if (i == size-1) packets_sent[next_seq_num] = make_pkt(next_seq_num, false, true, true, false, chunks[i]);
-            else packets_sent[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, chunks[i]);
+            if (i == size-1) outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, true, true, false, false, chunks[i]);
+            else outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, false, chunks[i]);
 
             // avail[next_seq_num] = true;
             // sent[next_seq_num] = false;
@@ -116,24 +113,22 @@ void* sending_routine(void *arg){
         for(int i=send_base; i<send_base+WINDOW_SIZE; i++){         // iterate within the window and send any packets that can be sent
             i %= PACKETS_ARRAY_SIZE;
 
-            if (packets_sent[i].sent == false && packets_sent[i].avail == true) {     // if packet can be sent (available, read) and not sent before, send it
+            if (outgoing_packets[i].sent == false && outgoing_packets[i].avail == true) {     // if packet can be sent (available, read) and not sent before, send it
                 
-                if (sendto(sockfd, &packets_sent[i], sizeof(packets_sent[i]), 0, (const struct sockaddr *) dest, sizeof(*dest)) == -1){
+                if (sendto(sockfd, &outgoing_packets[i], sizeof(outgoing_packets[i]), 0, (const struct sockaddr *) dest, sizeof(*dest)) == -1){
                     perror("client: pkt sending");
                     return NULL;
                 }
 
-                packets_sent[i].sent = true;
+                outgoing_packets[i].sent = true;
+            }
+
+            while (outgoing_packets[send_base].sent == true && ack_rcvd[send_base] == true){        // packet is sent and received correctly, slide send_base to the right
+                send_base++;        // mutex maybe
+                send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
             }
 
         }
-
-
-        while (packets_sent[send_base].sent == true && ack_rcvd[send_base] == true){        // packet is sent and received correctly, slide send_base to the right
-            send_base++;        // mutex maybe
-            send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
-        }
-
 
     } 
 
@@ -144,10 +139,10 @@ void* sending_routine(void *arg){
 void extract_data(int idx, bool last){
 
     cout  << "RECEIVED: ";
-    cout << "seq#: " << packets_rcvd[idx].number;
-    cout << " payload: " << packets_rcvd[idx].payload;
+    cout << "seq#: " << incoming_packets[idx].number;
+    cout << " payload: " << incoming_packets[idx].payload;
 
-    // cout << packets_rcvd[idx].payload;
+    // cout << incoming_packets[idx].payload;
     if (last) cout << endl;
 
 }
@@ -174,7 +169,7 @@ void* receiving_routine(void *arg){
 
         if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE){
 
-            int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.payload);
+            int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.received, received_pkt.payload);
             
             if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
                 cout << "checksum mismatch" << endl;
@@ -186,8 +181,9 @@ void* receiving_routine(void *arg){
                 cout << "ack rcvd " << received_pkt.number << endl;
 
             } else {                                                        // it is a data packet
-                received[received_pkt.number] = true;
-                packets_rcvd[received_pkt.number] = received_pkt;
+                incoming_packets[received_pkt.number] = received_pkt;
+                incoming_packets[received_pkt.number].received = true;
+                
 
                 if (ack_sent[received_pkt.number] == false){
 
@@ -200,8 +196,8 @@ void* receiving_routine(void *arg){
 
         }
 
-        while (received[rcv_base] == true) {
-            extract_data(rcv_base, packets_rcvd[rcv_base].last_chunk);
+        while (incoming_packets[rcv_base].received == true) {
+            extract_data(rcv_base, incoming_packets[rcv_base].last_chunk);
             rcv_base++;
             rcv_base %= PACKETS_ARRAY_SIZE;
         }

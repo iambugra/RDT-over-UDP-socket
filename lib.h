@@ -53,16 +53,17 @@ typedef struct {
     bool last_chunk;
     bool avail;
     bool sent;
+    bool received;
     char payload[8];
 } Packet;
 
 
 
-int compute_cheksum(bool isACK, int number, bool last_chunk, bool avail, bool sent, char *payload){
+int compute_cheksum(bool isACK, int number, bool last_chunk, bool avail, bool sent, bool received, char *payload){
     
     int res = 0;
 
-    res += (isACK + number + last_chunk + avail + sent);
+    res += (isACK + number + last_chunk + avail + sent + received);
 
     for (int i=0; i<8; i++)
         res += payload[i];
@@ -71,12 +72,13 @@ int compute_cheksum(bool isACK, int number, bool last_chunk, bool avail, bool se
 }
 
 
-Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, string msg){
+Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool received, string msg){
     Packet datagram;
 
     datagram.avail = avail;
     datagram.isACK = ACK;
     datagram.sent = sent;
+    datagram.received = received;
 
     // mutex possible
     datagram.number = number;
@@ -92,7 +94,7 @@ Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, string m
     for (; idx<8; idx++)
         datagram.payload[idx] = '\0';
 
-    datagram.checksum = compute_cheksum(datagram.isACK, datagram.number, datagram.last_chunk, datagram.avail, datagram.sent, datagram.payload);
+    datagram.checksum = compute_cheksum(datagram.isACK, datagram.number, datagram.last_chunk, datagram.avail, datagram.sent, datagram.received, datagram.payload);
 
     return datagram;
 }
