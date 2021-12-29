@@ -1,66 +1,51 @@
 #include "lib.h"
 
 
-int PORT_TROLL = 9319;
-
 struct sockaddr_storage peer_addr;
 socklen_t peer_addr_len;
 
-sem_t *mutex, *synch;
 
-Packet outgoing_packets[PACKETS_ARRAY_SIZE];     // both reading and sending routine accesses
-Packet incoming_packets[PACKETS_ARRAY_SIZE];
+Packet packets_sent[PACKETS_ARRAY_SIZE];     // both reading and sending routine accesses
+Packet packets_rcvd[PACKETS_ARRAY_SIZE];     // only receiving
 
-int next_seq_num = WINDOW_SIZE;         
-int send_base = WINDOW_SIZE;
-int rcv_base = WINDOW_SIZE;
+int next_seq_num = WINDOW_SIZE;              // reading  
+int send_base = WINDOW_SIZE;                 // sending
+int rcv_base = WINDOW_SIZE;                  // receiving
 
-bool sent[PACKETS_ARRAY_SIZE];          // both reading and sending routine accesses
-bool acked[PACKETS_ARRAY_SIZE];         // both reading and sending routine accesses
-bool avail[PACKETS_ARRAY_SIZE];         // both reading and sending routine accesses
-bool received[PACKETS_ARRAY_SIZE];      
+bool ack_rcvd[PACKETS_ARRAY_SIZE];      // sending and receiving
+bool received[PACKETS_ARRAY_SIZE];      // sending and receiving
 
 
-Packet make_pkt(bool ACK, bool is_last_chunk, bool isValid, string msg){
-    Packet datagram;
+void send_ack(int sockfd, int number){
 
-    datagram.valid = isValid;
-    datagram.isACK = ACK;
+    string msg = "ACK";
+    Packet ack = make_pkt(number, true, true, true, false, msg);
 
-    // mutex possible
-    datagram.number = next_seq_num;
+    if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
+        perror("server: ack sending");
+        return;
+    }
+    ack.sent = true;
+    cout << "ack sent " << ack.number << endl;
 
-    datagram.last_chunk = is_last_chunk;
-    
-    memset(datagram.payload, 0, sizeof(char) * 8);
-
-    int idx = 0;
-    for (idx=0; idx<msg.length(); idx++)
-        datagram.payload[idx] = msg[idx];
-
-    for (; idx<8; idx++)
-        datagram.payload[idx] = '\0';
-
-    datagram.checksum = compute_cheksum(datagram.isACK, datagram.number, datagram.last_chunk, datagram.valid, datagram.payload);
-
-    return datagram;
 }
 
 
 void init(){
 
     for (int i=0; i<PACKETS_ARRAY_SIZE; i++){
-        avail[i] = false;
-        acked[i] = false;
+        // avail[i] = false;
+        // ack_sent[i] = false;
+        ack_rcvd[i] = false;
         received[i] = false;
-        sent[i] = false;
+        // sent[i] = false;
     }
 
     string dummy_msg1 = "kokaric";
     string dummy_msg2 = "kokorec";
     for (int i=0; i<WINDOW_SIZE; i++){
-        outgoing_packets[i] = make_pkt(false, false, false, dummy_msg1);
-        incoming_packets[i] = make_pkt(false, false, false, dummy_msg2);
+        packets_sent[i] = make_pkt(0, false, false, false, false, dummy_msg1);
+        packets_rcvd[i] = make_pkt(0, false, false, false, false, dummy_msg2);
     }
 }
 
@@ -103,21 +88,15 @@ void* reading_routine(void *arg){
         int size = chunks.size();
 
         for (int i=0; i<size; i++){
-            sem_wait(mutex);
 
-            if (i == size-1) outgoing_packets[next_seq_num] = make_pkt(false, true, true, chunks[i]);
-            else outgoing_packets[next_seq_num] = make_pkt(false, false, true, chunks[i]);
+            if (i == size-1) packets_sent[next_seq_num] = make_pkt(next_seq_num, false, true, true, false, chunks[i]);
+            else packets_sent[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, chunks[i]);
 
-            // cout << "after mk_pkt: " << outgoing_packets[next_seq_num].payload << endl;
-
-            avail[next_seq_num] = true;
-            sent[next_seq_num] = false;
-            // acked[next_seq_num] = false;
+            // avail[next_seq_num] = true;
+            // sent[next_seq_num] = false;
 
             next_seq_num++;
             next_seq_num %= PACKETS_ARRAY_SIZE;
-
-            sem_post(mutex);
         }
     }
 
@@ -128,57 +107,30 @@ void* reading_routine(void *arg){
 
 void* sending_routine(void *arg){
 
-    sem_wait(synch);
-
-    // struct addrinfo *self = ((sending_routine_params *)arg)->self;
-    // char *port_troll = ((sending_routine_params *)arg)->port_troll;
     int sockfd = ((sending_routine_params *)arg)->sockfd;
-
-    // struct sockaddr_in *dest = (struct sockaddr_in *)self->ai_addr;
-    // dest->sin_port = PORT_TROLL;
-
-    // cout << dest->sin_port << endl;
     
     while(1) {
         // mutex for send_base maybe
         for (int i=send_base; i<send_base+WINDOW_SIZE; i++){         // iterate within the window and send any packets that can be sent
             i %= PACKETS_ARRAY_SIZE;
 
-            if (sent[i] == false && avail[i] == true) {     // if packet can be sent (in avail list) and not sent before, send it
+            if (packets_sent[i].sent == false && packets_sent[i].avail == true) {     // if packet can be sent (available, read) and not sent before, send it
                 
-                if (sendto(sockfd, &outgoing_packets[i], sizeof(outgoing_packets[i]), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
+                if (sendto(sockfd, &packets_sent[i], sizeof(packets_sent[i]), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
                     perror("server: pkt sending");
                     cout << strerror(errno) << endl;
                     return NULL;
                 }
 
-                // cout << outgoing_packets[i].payload << endl;
-
-                sent[i] = true;
+                packets_sent[i].sent = true;
             }
 
-            if (received[i] == true && acked[i] == false) {     // if a packet is rcvd and not acked before, send ack and mark as acked
-                
-                string ack_msg = "ACK";
-                Packet ack = make_pkt(true, true, true, ack_msg);
-
-                // cout << PORT_TROLL << endl;
-
-                if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
-                    perror("server: ack sending");
-                    return NULL;
-                }
-
-                acked[i] = true;
-
-            }
         }
 
-        while (sent[send_base] == true && acked[send_base] == true){        // packet is sent and received correctly, slide send_base to the right
+        while (packets_sent[send_base].sent == true && ack_rcvd[send_base] == true){        // packet is sent and received correctly, slide send_base to the right
             send_base++;        // mutex maybe
             send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
         }
-
 
     } 
 
@@ -187,8 +139,13 @@ void* sending_routine(void *arg){
 
 
 void extract_data(int idx, bool last){
-    
-    cout << incoming_packets[idx].payload;
+
+
+    cout  << "RECEIVED: ";
+    cout << "seq#: " << packets_rcvd[idx].number;
+    cout << " payload: " << packets_rcvd[idx].payload;
+
+    // cout << packets_rcvd[idx].payload;
     if (last) cout << endl;
 
 }
@@ -197,10 +154,11 @@ void extract_data(int idx, bool last){
 void* receiving_routine(void *arg){
 
     int sockfd = *((int *) arg);
-    // struct sockaddr_in troll_addrinfo;
-    // struct addrinfo *troll_addrinfo;
-    // socklen_t size_trolladdr;
     Packet received_pkt;
+
+    bool ack_sent[PACKETS_ARRAY_SIZE];
+    for (int i=0; i<PACKETS_ARRAY_SIZE; i++)
+        ack_sent[i] = false;
 
     while (1) {
         peer_addr_len = sizeof(peer_addr);
@@ -210,41 +168,40 @@ void* receiving_routine(void *arg){
             return NULL;
         }
 
-        
-        // struct sockaddr_in *src = (struct sockaddr_in *)troll_addrinfo->ai_addr;
-        
-        // PORT_TROLL = htons(troll_addrinfo.sin_port);
-        // cout << PORT_TROLL << endl;
-
-        sem_post(synch);
-
         if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE){
 
-            int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.valid, received_pkt.payload);
+            int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.payload);
             
             if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
                 cout << "checksum mismatch" << endl;
                 continue;
             }
 
-            if (received_pkt.isACK){                                        // packet is an ACK packet
-                acked[received_pkt.number] = true;
-                // cout << "ackkkk" << endl;
+            if (received_pkt.isACK){                                        // packet is an ACK packet      
+                ack_rcvd[received_pkt.number] = true;
+                cout << " ack rcvd " << received_pkt.number << endl;
 
             } else {                                                        // it is a data packet
-                // acked[received_pkt.number] = false;
                 received[received_pkt.number] = true;
+                packets_rcvd[received_pkt.number] = received_pkt;
 
-                incoming_packets[received_pkt.number] = received_pkt;
+                if (ack_sent[received_pkt.number] == false) {
 
+                    send_ack(sockfd, received_pkt.number);
+                    ack_sent[received_pkt.number] = true;
+                
+                }
             }
+
         }
 
+
         while (received[rcv_base] == true) {
-            extract_data(rcv_base, incoming_packets[rcv_base].last_chunk);
+            extract_data(rcv_base, packets_rcvd[rcv_base].last_chunk);
             rcv_base++;
             rcv_base %= PACKETS_ARRAY_SIZE;
         }
+
 
     }
 
@@ -294,12 +251,6 @@ int main(int argc, char *argv[]){
         return 3;
     }
 
-    sem_unlink("server_sem_mutex");
-    sem_unlink("server_sem_synch");
-
-    mutex = sem_open("server_sem_mutex", O_CREAT, 0600, 1);
-    synch = sem_open("server_sem_synch", O_CREAT, 0600, 0);
-
     pthread_t reading_tid, sending_tid, receiving_tid;
 
     sending_routine_params send_params;
@@ -312,14 +263,9 @@ int main(int argc, char *argv[]){
     pthread_create(&receiving_tid, NULL, &receiving_routine, &sockfd);
 
 
-
-
     pthread_join(reading_tid, NULL);
     pthread_join(sending_tid, NULL);
     pthread_join(receiving_tid, NULL);
     
-
-    sem_close(mutex);
-    sem_close(synch);
     return 0;
 }
