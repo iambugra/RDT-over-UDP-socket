@@ -12,8 +12,6 @@ int next_seq_num = WINDOW_SIZE;              // reading
 int send_base = WINDOW_SIZE;                 // sending
 int rcv_base = WINDOW_SIZE;                  // receiving
 
-// bool ack_rcvd[PACKETS_ARRAY_SIZE];      // sending and receiving
-
 
 void send_ack(int sockfd, int number){
 
@@ -31,14 +29,6 @@ void send_ack(int sockfd, int number){
 
 
 void init(){
-
-    // for (int i=0; i<PACKETS_ARRAY_SIZE; i++){
-        // avail[i] = false;
-        // ack_sent[i] = false;
-        // ack_rcvd[i] = false;
-        // received[i] = false;
-        // sent[i] = false;
-    // }
 
     string dummy_msg1 = "kokaric";
     string dummy_msg2 = "kokorec";
@@ -133,20 +123,20 @@ void* receiving_routine(void *arg){
             return NULL;
         }
 
-        if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE){
+        int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.received, received_pkt.ack_rcvd, received_pkt.payload);
+        if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
+            cout << "checksum mismatch" << endl;
+            continue;
+        }
 
-            int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.received, received_pkt.ack_rcvd, received_pkt.payload);
+        if (received_pkt.isACK) {
+            outgoing_packets[received_pkt.number].ack_rcvd = true;
+            cout << " ack rcvd " << received_pkt.number << endl;
             
-            if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
-                cout << "checksum mismatch" << endl;
-                continue;
-            }
+        } else {
 
-            if (received_pkt.isACK){                                        // packet is an ACK packet      
-                outgoing_packets[received_pkt.number].ack_rcvd = true;
-                cout << " ack rcvd " << received_pkt.number << endl;
+            if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE) {
 
-            } else {                                                        // it is a data packet
                 incoming_packets[received_pkt.number] = received_pkt;
                 incoming_packets[received_pkt.number].received = true;
                 
@@ -154,10 +144,8 @@ void* receiving_routine(void *arg){
 
                     send_ack(sockfd, received_pkt.number);
                     ack_sent[received_pkt.number] = true;
-                
                 }
             }
-
         }
 
         while (incoming_packets[rcv_base].received == true) {
