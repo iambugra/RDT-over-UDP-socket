@@ -44,36 +44,6 @@ void init(){
 }
 
 
-vector<string> create_8B_chunks(string buffer){
-
-    vector<string> result;
-
-    int len = buffer.size();                // get lenght of string
-    int chunk_count = ceil(len/8.);         // how many 8B chunks
-
-    for (int i=0; i<chunk_count; i++){
-        string s = buffer.substr(i*8, 8);
-        result.push_back(s);
-    }
-
-    return result;
-}
-
-
-vector<string> read_stdin(){
-    char buf[BUFFER_SIZE];
-
-    memset(buf, 0, sizeof(char)*BUFFER_SIZE);            // clear the buf
-    size_t len = read(0, buf, BUFFER_SIZE);              // read stdin into buf
-    buf[len] = '\0';
-
-    string buffer(buf);
-    buffer.pop_back();                                   // remove new line character
-
-    return create_8B_chunks(buffer);
-}
-
-
 void* reading_routine(void *arg){
 
     while (1){
