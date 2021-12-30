@@ -16,7 +16,7 @@ int rcv_base = WINDOW_SIZE;                  // receiving
 void send_ack(int sockfd, int number){
 
     string msg = "ACK";
-    TimePoint t = Clock::now();
+    chrono::time_point<chrono::high_resolution_clock> t = chrono::high_resolution_clock::now();
     Packet ack = make_pkt(number, true, true, true, false, false, false, t, msg);
 
     if (sendto(sockfd, &ack, sizeof(ack), 0, (const struct sockaddr *) &peer_addr, peer_addr_len) == -1){
@@ -31,7 +31,7 @@ void send_ack(int sockfd, int number){
 
 void init(){
 
-    TimePoint t = Clock::now();
+    chrono::time_point<chrono::high_resolution_clock> t = chrono::high_resolution_clock::now();
 
     string dummy_msg1 = "kokaric";
     string dummy_msg2 = "kokorec";
@@ -46,7 +46,7 @@ void* reading_routine(void *arg){
 
     while (1){
         
-        TimePoint t = Clock::now();
+        chrono::time_point<chrono::high_resolution_clock> t = chrono::high_resolution_clock::now();
         
         vector<string> chunks = read_stdin();
         int size = chunks.size();
@@ -57,7 +57,8 @@ void* reading_routine(void *arg){
             else outgoing_packets[next_seq_num] = make_pkt(next_seq_num, false, false, true, false, false, false, t, chunks[i]);
 
             next_seq_num++;
-            next_seq_num %= PACKETS_ARRAY_SIZE;
+            next_seq_num = ((next_seq_num %  PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE;
+            // next_seq_num %= PACKETS_ARRAY_SIZE;
         }
     }
 
@@ -78,7 +79,8 @@ void* sending_routine(void *arg){
     while(1) {
         // mutex for send_base maybe
         for (int i=send_base; i<send_base+WINDOW_SIZE; i++){         // iterate within the window and send any packets that can be sent
-            i %= PACKETS_ARRAY_SIZE;
+            // i %= PACKETS_ARRAY_SIZE;
+            i = ((i % PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE;
 
             if (outgoing_packets[i].sent == false && outgoing_packets[i].avail == true) {     // if packet can be sent (available, read) and not sent before, send it
                 
@@ -88,7 +90,7 @@ void* sending_routine(void *arg){
                     return NULL;
                 }
                 outgoing_packets[i].sent = true;
-                outgoing_packets[i].timestamp = Clock::now();
+                outgoing_packets[i].timestamp = chrono::high_resolution_clock::now();
             }
 
 
@@ -96,7 +98,8 @@ void* sending_routine(void *arg){
 
         while (outgoing_packets[send_base].sent == true && outgoing_packets[send_base].ack_rcvd == true){        // packet is sent and received correctly, slide send_base to the right
             send_base++;        // mutex maybe
-            send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
+            // send_base %= PACKETS_ARRAY_SIZE;                             // for possible wrap up to the beginning
+            send_base = ((send_base % PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE;
         }
 
     } 
@@ -134,14 +137,18 @@ void* receiving_routine(void *arg){
             return NULL;
         }
 
-        if (incoming_packets[received_pkt.number].received == true) {
-            cout << "duplicate: packet " << received_pkt.number << " already received. " << endl;
-            continue;
-        }
-
         int calculated_chksum = compute_cheksum(received_pkt.isACK, received_pkt.number, received_pkt.last_chunk, received_pkt.avail, received_pkt.sent, received_pkt.received, received_pkt.ack_rcvd, received_pkt.payload);
         if (calculated_chksum != received_pkt.checksum){                // cheksums do not match, discard packet
             cout << "checksum mismatch" << endl;
+            continue;
+        }
+
+        if (received_pkt.isACK == false && incoming_packets[received_pkt.number].received == true) {
+            cout << "duplicate: packet " << received_pkt.number << " already received. " << endl;
+
+            send_ack(sockfd, received_pkt.number);
+            ack_sent[received_pkt.number] = true;
+    
             continue;
         }
 
@@ -151,22 +158,26 @@ void* receiving_routine(void *arg){
             
         } else {
 
-            if ((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE < WINDOW_SIZE) {
+            if ((((received_pkt.number - rcv_base) % PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE < WINDOW_SIZE) {
 
                 incoming_packets[received_pkt.number] = received_pkt;
                 incoming_packets[received_pkt.number].received = true;
                 
-                if (ack_sent[received_pkt.number] == false) {
-                    send_ack(sockfd, received_pkt.number);
-                    ack_sent[received_pkt.number] = true;
-                }
+                send_ack(sockfd, received_pkt.number);
+                ack_sent[received_pkt.number] = true;
+            }
+            if ((((rcv_base - 1 - received_pkt.number) % PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE < WINDOW_SIZE) {
+                
+                send_ack(sockfd, received_pkt.number);
+                ack_sent[received_pkt.number] = true;
             }
         }
 
         while (incoming_packets[rcv_base].received == true) {
             extract_data(rcv_base, incoming_packets[rcv_base].last_chunk);
             rcv_base++;
-            rcv_base %= PACKETS_ARRAY_SIZE;
+            // rcv_base %= PACKETS_ARRAY_SIZE;
+            rcv_base = ((rcv_base % PACKETS_ARRAY_SIZE) + PACKETS_ARRAY_SIZE) % PACKETS_ARRAY_SIZE;
         }
 
     }

@@ -27,13 +27,9 @@
 #define BUFFER_SIZE 500
 #define PACKETS_ARRAY_SIZE 2048
 
-#define chrono::high_resolution_clock::time_point TimePoint
-#define chrono::high_resolution_clock Clock 
 
 using namespace std;
 
-// #define PORT_SERVER "3456"
-// #define PORT_CLIENT "7890"
 
 struct handshake_thd_params {
     int sockfd;
@@ -59,7 +55,7 @@ typedef struct {
     bool sent;
     bool received;
     bool ack_rcvd;
-    TimePoint timestamp; // = chrono::high_resolution_clock::now();
+    chrono::time_point<chrono::high_resolution_clock> timestamp; // = chrono::high_resolution_clock::now();
     char payload[8];
 } Packet;
 
@@ -80,7 +76,7 @@ int compute_cheksum(bool isACK, int number, bool last_chunk, bool avail, bool se
 }
 
 
-Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool received, bool ack_rcvd, TimePoint timestamp, string msg){
+Packet make_pkt(int number, bool ACK, bool last, bool avail, bool sent, bool received, bool ack_rcvd, chrono::time_point<chrono::high_resolution_clock> timestamp, string msg){
     Packet datagram;
 
     datagram.avail = avail;
